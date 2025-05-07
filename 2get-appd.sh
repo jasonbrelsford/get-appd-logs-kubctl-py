@@ -1,5 +1,6 @@
 #!/bin/bash
 #Copyright Jason Brelsford
+#“This software is licensed under CC BY-NC 4.0. For commercial use, please contact @jasonbrelsford.”
 #
 set -e
 
