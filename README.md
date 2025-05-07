@@ -14,7 +14,7 @@ Type in available context.
 Choose your paths and follow instructions.
 
 
-Use python3 to launch. 
+Python code:  Alternately use python3 to launch with a python3 env.
 
 "python3 app.py"
 
