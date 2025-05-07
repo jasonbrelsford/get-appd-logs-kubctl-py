@@ -1,6 +1,18 @@
+
+
 # get-appd-logs-kubctl-py
 Get Appd logs from kubernetes
 “This software is licensed under CC BY-NC 4.0. For commercial use, please contact @jasonbrelsford.”
+
+There are two methods at work here.  The bash script will work most of the time.  Also working on the python implementation so that it can be run without linux or mac os.
+
+download 2get-appd.sh
+chmod 777 2get-appd.sh
+./2get-appd.sh
+Get your kubeconfig into clipboard.
+Type in available context.
+Choose your paths and follow instructions.
+
 
 Use python3 to launch. 
 
