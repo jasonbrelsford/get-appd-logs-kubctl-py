@@ -16,6 +16,10 @@ Choose your paths and follow instructions.
 
 Python code:  Alternately use python3 to launch with a python3 env.
 
-"python3 app.py"
+"Use python3 to launch the app in the downloadable zip file"
+
+kube_browser_app_python3.zip
+
+"Run python3 app.py"
 
 Should launch on port 5000. 
