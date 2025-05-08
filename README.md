@@ -15,12 +15,17 @@ Type in available context.
 Choose your paths and follow instructions.
 
 #Python Version
+
 Python code:  Alternately use python3 to launch with a python3 env.
 
 "Use python3 to launch the app in the downloadable zip file"
 
 kube_browser_app_python3.zip
 
+Create a python3 env.
+
 "Run python3 app.py"
 
-Should launch on port 5000. 
+Should launch on port 5000.
+
+http://127.0.0.1:5000
