@@ -1,76 +1,97 @@
-import os
-import tempfile
+# Auto-install required packages if not present
 import subprocess
-import shutil
-from datetime import datetime
+import sys
 
-# --- Ensure required modules are installed ---
-try:
-    from flask import Flask, request, render_template_string, send_file
-except ImportError:
-    subprocess.check_call(["python3", "-m", "pip", "install", "flask"])
-    from flask import Flask, request, render_template_string, send_file
+required = {
+    "flask": "2.3.3"
+}
+
+for pkg, ver in required.items():
+    try:
+        __import__(pkg)
+    except ImportError:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", f"{pkg}=={ver}"])
+
+import os
+import subprocess
+from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for
+from pathlib import Path
+import platform
+
+os_type = platform.system()  # e.g., "Windows", "Linux", "Darwin"
+home = os.path.expanduser("~")
+
+if os_type == "Windows":
+    temp_dir = os.environ.get("TEMP", "C:\\Temp")
+else:
+    temp_dir = "/tmp"
 
 app = Flask(__name__)
+state = {}
+KUBECONFIG_PATH = "/tmp/kubeconfig.yaml"
+os.environ["KUBECONFIG"] = KUBECONFIG_PATH
 
-HTML_TEMPLATE = """
-<!DOCTYPE html>
-<html lang=\"en\">
-<head>
-    <meta charset=\"UTF-8\">
-    <title>Kubeconfig & AppD Logs</title>
-</head>
-<body>
-    <h2>Paste Your Kubeconfig</h2>
-    <form method=\"POST\" action=\"/download\">
-        <textarea name=\"kubeconfig\" rows=\"20\" cols=\"80\" required></textarea><br><br>
-        Namespace: <input type=\"text\" name=\"namespace\" required><br><br>
-        Pods (comma-separated): <input type=\"text\" name=\"pods\" required><br><br>
-        <input type=\"submit\" value=\"Download AppD Logs\">
-    </form>
-</body>
-</html>
-"""
-
-@app.route("/", methods=["GET"])
+@app.route("/", methods=["GET", "POST"])
 def index():
-    return render_template_string(HTML_TEMPLATE)
+    if request.method == "POST":
+        kubeconfig_content = request.form["kubeconfig"]
+        with open(KUBECONFIG_PATH, "w") as f:
+            f.write(kubeconfig_content)
+        os.chmod(KUBECONFIG_PATH, 0o600)
+        return redirect(url_for("browser"))
+    return render_template("upload_kubeconfig.html")
 
-@app.route("/download", methods=["POST"])
-def download_logs():
-    kubeconfig_content = request.form['kubeconfig']
-    namespace = request.form['namespace']
-    pods = [pod.strip() for pod in request.form['pods'].split(',')]
+@app.route("/browser")
+def browser():
+    return render_template("browser.html")
 
-    # Create temp dir and kubeconfig file
-    work_dir = tempfile.mkdtemp()
-    kubeconfig_path = os.path.join(work_dir, 'kubeconfig.yaml')
-    with open(kubeconfig_path, 'w') as f:
-        f.write(kubeconfig_content)
+@app.route("/api/root")
+def api_root():
+    return jsonify([{"id": "/", "text": "/", "children": True}])
 
-    env = os.environ.copy()
-    env['KUBECONFIG'] = kubeconfig_path
+@app.route("/api/children")
+def api_children():
+    pod = request.args.get("pod")
+    ns = request.args.get("namespace")
+    path = request.args.get("path", "/")
+    if not all([pod, ns]):
+        return jsonify([])
 
-    zip_files = []
-    for pod in pods:
-        log_path = "/opt/appdynamics-java/ver24.12.0.36528/logs"
-        local_dir = os.path.join(work_dir, f"appd-logs-{pod}")
-        os.makedirs(local_dir, exist_ok=True)
+    cmd = ["kubectl", "exec", "-n", ns, pod, "--", "ls", "-p", path]
+    try:
+        entries = subprocess.check_output(cmd, text=True).splitlines()
+    except subprocess.CalledProcessError:
+        return jsonify([])
 
-        subprocess.run([
-            "kubectl", "cp",
-            f"{namespace}/{pod}:{log_path}",
-            local_dir
-        ], env=env, check=False)
+    result = []
+    for entry in entries:
+        is_dir = entry.endswith('/')
+        name = entry.rstrip('/')
+        full_path = os.path.join(path, name)
+        result.append({
+            "id": full_path,
+            "text": name,
+            "children": is_dir
+        })
+    return jsonify(result)
 
-        shutil.make_archive(local_dir, 'zip', local_dir)
-        zip_files.append(f"{local_dir}.zip")
+@app.route("/download")
+def download():
+    pod = request.args.get("pod")
+    ns = request.args.get("namespace")
+    path = request.args.get("path")
+    if not all([pod, ns, path]):
+        return "Missing parameters", 400
 
-    # Combine into a single zip file for download
-    final_zip = os.path.join(work_dir, f"appd_logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip")
-    shutil.make_archive(final_zip.replace('.zip', ''), 'zip', work_dir)
-
-    return send_file(final_zip, as_attachment=True)
+    local_dir = f"/tmp/logs-{pod}-{path.replace('/', '_')}"
+    os.makedirs(local_dir, exist_ok=True)
+    try:
+        subprocess.check_call(["kubectl", "cp", f"{ns}/{pod}:{path}", local_dir])
+        zip_path = f"{local_dir}.zip"
+        subprocess.check_call(["zip", "-r", zip_path, local_dir])
+        return send_file(zip_path, as_attachment=True)
+    except subprocess.CalledProcessError as e:
+        return f"Error copying files: {e}", 500
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=True)
